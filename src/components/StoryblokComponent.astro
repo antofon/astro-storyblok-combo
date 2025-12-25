@@ -1,0 +1,1029 @@
+---
+interface Props {
+  blok: any;
+}
+
+const { blok } = Astro.props;
+
+// Dynamically import component based on component name
+const componentName = blok.component;
+
+// Helper function to extract plain text from rich text (for headlines/titles)
+function getPlainText(content: any): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  
+  // Handle arrays (e.g., multiple text nodes or rich text blocks)
+  if (Array.isArray(content)) {
+    return content.map((item: any) => getPlainText(item)).join('');
+  }
+  
+  // Handle Storyblok rich text format
+  if (content.type === 'doc' && content.content) {
+    return content.content.map((node: any) => {
+      if (node.content) {
+        return node.content.map((c: any) => {
+          if (c.text) return c.text;
+          if (c.content) return getPlainText({ type: 'doc', content: [c] });
+          return '';
+        }).join('');
+      }
+      return '';
+    }).join(' ').trim();
+  }
+  
+  // Handle paragraph/text nodes directly
+  if (content.type === 'paragraph' && content.content) {
+    return content.content.map((c: any) => c.text || '').join('');
+  }
+  
+  // If it's an object but not rich text format, try to stringify sensibly
+  if (typeof content === 'object') {
+    if (content.text) return content.text;
+    // Try common field names
+    if (content.value) return String(content.value);
+    if (content.content && typeof content.content === 'string') return content.content;
+    return '';
+  }
+  
+  return String(content);
+}
+
+// Helper function to render rich text content with HTML (including colors and styles)
+function renderRichText(content: any): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  
+  // Handle arrays
+  if (Array.isArray(content)) {
+    return content.map((item: any) => renderRichText(item)).join('');
+  }
+  
+  // Process a single text node with marks
+  function processTextNode(c: any): string {
+    if (c.type === 'text') {
+      let result = c.text || '';
+      // Handle marks (bold, italic, color, etc.)
+      if (c.marks) {
+        c.marks.forEach((mark: any) => {
+          if (mark.type === 'bold') result = `<strong>${result}</strong>`;
+          if (mark.type === 'italic') result = `<em>${result}</em>`;
+          if (mark.type === 'underline') result = `<u>${result}</u>`;
+          if (mark.type === 'strike') result = `<s>${result}</s>`;
+          if (mark.type === 'code') result = `<code>${result}</code>`;
+          if (mark.type === 'link') {
+            const href = mark.attrs?.href || '#';
+            const target = mark.attrs?.target || '_self';
+            result = `<a href="${href}" target="${target}" class="text-primary hover:underline">${result}</a>`;
+          }
+          // Handle text color
+          if (mark.type === 'textStyle' && mark.attrs?.color) {
+            result = `<span style="color: ${mark.attrs.color}">${result}</span>`;
+          }
+          // Handle highlight/background color
+          if (mark.type === 'highlight' && mark.attrs?.color) {
+            result = `<span style="background-color: ${mark.attrs.color}">${result}</span>`;
+          }
+          // Handle styled text class
+          if (mark.type === 'styled' && mark.attrs?.class) {
+            result = `<span class="${mark.attrs.class}">${result}</span>`;
+          }
+        });
+      }
+      return result;
+    }
+    if (c.type === 'hard_break') return '<br>';
+    return '';
+  }
+  
+  if (content.type === 'doc' && content.content) {
+    return content.content.map((node: any) => {
+      if (node.type === 'paragraph') {
+        const text = node.content?.map(processTextNode).join('') || '';
+        return text ? `<p>${text}</p>` : '<p></p>';
+      }
+      if (node.type === 'heading') {
+        const text = node.content?.map(processTextNode).join('') || '';
+        const level = node.attrs?.level || 2;
+        return `<h${level}>${text}</h${level}>`;
+      }
+      if (node.type === 'bullet_list') {
+        const items = node.content?.map((li: any) => {
+          const text = li.content?.[0]?.content?.map(processTextNode).join('') || '';
+          return `<li>${text}</li>`;
+        }).join('') || '';
+        return `<ul class="list-disc list-inside">${items}</ul>`;
+      }
+      if (node.type === 'ordered_list') {
+        const items = node.content?.map((li: any) => {
+          const text = li.content?.[0]?.content?.map(processTextNode).join('') || '';
+          return `<li>${text}</li>`;
+        }).join('') || '';
+        return `<ol class="list-decimal list-inside">${items}</ol>`;
+      }
+      if (node.type === 'blockquote') {
+        const text = node.content?.map((p: any) => {
+          return p.content?.map(processTextNode).join('') || '';
+        }).join('') || '';
+        return `<blockquote class="border-l-4 border-primary pl-4 italic">${text}</blockquote>`;
+      }
+      return '';
+    }).join('');
+  }
+  
+  // Handle single paragraph node
+  if (content.type === 'paragraph' && content.content) {
+    return content.content.map(processTextNode).join('');
+  }
+  
+  return '';
+}
+
+// Helper to render headline with rich text support (for colored words etc)
+function renderHeadline(content: any): string {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  
+  // Handle arrays
+  if (Array.isArray(content)) {
+    return content.map((item: any) => renderHeadline(item)).join('');
+  }
+  
+  // Process text with color marks for headlines
+  function processHeadlineText(c: any): string {
+    if (c.type === 'text') {
+      let result = c.text || '';
+      if (c.marks) {
+        c.marks.forEach((mark: any) => {
+          if (mark.type === 'bold') result = `<strong>${result}</strong>`;
+          if (mark.type === 'italic') result = `<em>${result}</em>`;
+          if (mark.type === 'textStyle' && mark.attrs?.color) {
+            result = `<span style="color: ${mark.attrs.color}">${result}</span>`;
+          }
+          if (mark.type === 'styled' && mark.attrs?.class) {
+            result = `<span class="${mark.attrs.class}">${result}</span>`;
+          }
+        });
+      }
+      return result;
+    }
+    return '';
+  }
+  
+  if (content.type === 'doc' && content.content) {
+    return content.content.map((node: any) => {
+      if (node.content) {
+        return node.content.map(processHeadlineText).join('');
+      }
+      return '';
+    }).join(' ');
+  }
+  
+  if (content.type === 'paragraph' && content.content) {
+    return content.content.map(processHeadlineText).join('');
+  }
+  
+  if (content.text) return content.text;
+  
+  return getPlainText(content);
+}
+
+// Helper to get text or render rich text
+function getText(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return getPlainText(value);
+}
+---
+
+{blok._uid && (
+  <div data-blok-uid={blok._uid} data-blok-component={componentName}>
+    {/* Page / Default Page Component */}
+    {(componentName === 'Page' || componentName === 'default-page') && blok.body && (
+      <div>
+        {blok.body.map((childBlok: any) => (
+          <Astro.self blok={childBlok} />
+        ))}
+      </div>
+    )}
+    
+    {/* Hero Component */}
+    {componentName === 'Hero' && (
+      <section class="relative py-16 md:py-20 lg:py-32" style="background-color: #A78BFA;">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="text-left">
+              {blok.eyebrow && (
+                <p class="text-lg font-medium mb-4 text-gray-800">{getText(blok.eyebrow)}</p>
+              )}
+              {blok.headline && (
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">{getText(blok.headline)}</h1>
+              )}
+              {blok.text && (
+                <p class="text-lg text-gray-800 mb-8" set:html={renderRichText(blok.text)} />
+              )}
+            </div>
+            {blok.image?.filename && (
+              <div class="relative">
+                <img 
+                  src={blok.image.filename} 
+                  alt={blok.image.alt || 'Hero image'} 
+                  class="rounded-lg shadow-xl w-full h-auto"
+                  loading="eager"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Hero Section Component */}
+    {componentName === 'hero-section' && (
+      <section class="relative not-prose">
+        {/* Full width background for centered layout */}
+        {blok.layout !== 'split' && blok.background_color && (
+          <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
+            <div class="absolute inset-0" style={`background-color: ${blok.background_color};`}></div>
+          </div>
+        )}
+        
+        {/* Split layout hero (text left, colored bg + image right) */}
+        {blok.layout === 'split' || blok.image?.filename ? (
+          <div class="grid grid-cols-1 lg:grid-cols-2 min-h-[80vh]">
+            {/* Left side - Content */}
+            <div class="flex items-center px-6 md:px-12 lg:px-16 py-16 lg:py-24">
+              <div class="max-w-xl">
+                {(blok.tagline || blok.eyebrow) && (
+                  <p class="text-sm font-bold tracking-wide uppercase mb-4 text-gray-900">{getText(blok.tagline || blok.eyebrow)}</p>
+                )}
+                {(blok.headline || blok.title) && (
+                  <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight tracking-tight mb-6 text-gray-900" set:html={renderHeadline(blok.headline || blok.title)} />
+                )}
+                {(blok.text || blok.subtitle || blok.description) && (
+                  <div class="text-lg text-gray-600 mb-8" set:html={renderRichText(blok.text) || getText(blok.subtitle) || getText(blok.description)} />
+                )}
+                {(blok.buttons || blok.cta) && (
+                  <div class="flex flex-wrap gap-4">
+                    {(blok.buttons || [blok.cta]).filter(Boolean).map((button: any, index: number) => (
+                      <a 
+                        href={button.link?.cached_url || button.link?.url || button.url || '#'}
+                        class:list={[
+                          'inline-flex items-center justify-center px-6 py-3 rounded-full font-semibold transition-all',
+                          (button.variant === 'secondary' || button.style === 'outline' || index > 0)
+                            ? 'bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-100'
+                            : 'bg-gray-900 hover:bg-gray-800 text-white'
+                        ]}
+                        style={button.background_color ? `background-color: ${button.background_color}; border-color: ${button.background_color};` : ''}
+                      >
+                        {button.label || button.text || getText(button.label) || 'Learn More'}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Right side - Image with background color */}
+            <div 
+              class="relative flex items-center justify-center p-8 lg:p-16"
+              style={blok.background_color ? `background-color: ${blok.background_color};` : 'background-color: #a78bfa;'}
+            >
+              {/* Decorative elements */}
+              <div class="absolute top-8 left-1/2 transform -translate-x-1/2">
+                <svg class="w-12 h-12 text-gray-900" viewBox="0 0 48 48" fill="none">
+                  <path d="M24 4v8M32 8l-4 6M40 16l-6 4M44 24h-8M40 32l-6-4M32 40l-4-6M24 44v-8M16 40l4-6M8 32l6-4M4 24h8M8 16l6 4M16 8l4 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              
+              {blok.image?.filename && (
+                <img 
+                  src={blok.image.filename} 
+                  alt={blok.image.alt || ''} 
+                  class="relative z-10 rounded-lg shadow-2xl max-w-full h-auto"
+                  loading="eager"
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Centered layout (fallback) */
+          <div class="relative max-w-7xl mx-auto px-4 sm:px-6">
+            <div class="py-16 md:py-24">
+              <div class="text-center max-w-4xl mx-auto">
+                {(blok.tagline || blok.eyebrow) && (
+                  <p class="text-base font-bold tracking-wide uppercase mb-4" style={blok.tagline_color ? `color: ${blok.tagline_color};` : ''}>{getText(blok.tagline || blok.eyebrow)}</p>
+                )}
+                {(blok.headline || blok.title) && (
+                  <h1 class="text-5xl md:text-6xl font-bold leading-tight tracking-tight mb-6 text-gray-900" set:html={renderHeadline(blok.headline || blok.title)} />
+                )}
+                {(blok.text || blok.subtitle || blok.description) && (
+                  <p class="text-xl text-gray-600 mb-8" set:html={renderRichText(blok.text) || getText(blok.subtitle) || getText(blok.description)} />
+                )}
+                {(blok.buttons || blok.cta) && (
+                  <div class="flex flex-wrap justify-center gap-4">
+                    {(blok.buttons || [blok.cta]).filter(Boolean).map((button: any, index: number) => (
+                      <a 
+                        href={button.link?.cached_url || button.link?.url || button.url || '#'}
+                        class:list={[
+                          'inline-flex items-center justify-center px-6 py-3 rounded-full font-semibold transition-all',
+                          (button.variant === 'secondary' || button.style === 'outline' || index > 0)
+                            ? 'bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-100'
+                            : 'bg-gray-900 hover:bg-gray-800 text-white'
+                        ]}
+                      >
+                        {button.label || button.text || 'Learn More'}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+    )}
+
+    {/* Tabbed Content Section */}
+    {componentName === 'tabbed-content-section' && (
+      <section class="py-16 md:py-24 bg-white dark:bg-slate-900">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6">
+          {(blok.headline || blok.title) && (
+            <h2 class="text-3xl md:text-5xl font-bold text-center mb-4 text-gray-900 dark:text-white" set:html={renderHeadline(blok.headline || blok.title)}>
+            </h2>
+          )}
+          {(blok.description || blok.subtitle) && (
+            <p class="text-center text-gray-600 dark:text-gray-300 mb-12 max-w-3xl mx-auto text-lg" set:html={renderRichText(blok.description) || getText(blok.subtitle)} />
+          )}
+          
+          {/* Tab navigation - pill style like the design */}
+          <div class="flex flex-wrap justify-center gap-2 mb-12 p-2 bg-gray-100 dark:bg-gray-800 rounded-full max-w-fit mx-auto">
+            {blok.tabs?.map((tab: any, index: number) => (
+              <button 
+                class:list={[
+                  'px-8 py-3 text-sm font-semibold transition-all rounded-full',
+                  index === 0 
+                    ? 'bg-gray-900 text-white shadow-md' 
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 hover:bg-gray-200'
+                ]}
+                data-tab={index}
+              >
+                {getText(tab.title) || getText(tab.label) || `Tab ${index + 1}`}
+              </button>
+            ))}
+          </div>
+          
+          {/* Tab content */}
+          <div class="tab-content bg-gray-50 dark:bg-gray-800 rounded-2xl p-8 md:p-12">
+            {blok.tabs?.map((tab: any, index: number) => (
+              <div 
+                class:list={['tab-panel', index === 0 ? 'block' : 'hidden']}
+                data-panel={index}
+              >
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+                  <div>
+                    {(tab.headline || tab.title) && (
+                      <h3 class="text-2xl md:text-3xl font-bold mb-6 text-gray-900 dark:text-white">{getText(tab.headline || tab.title)}</h3>
+                    )}
+                    {(tab.content || tab.description || tab.text) && (
+                      <div class="text-gray-600 dark:text-gray-300 prose dark:prose-invert mb-6" set:html={renderRichText(tab.content || tab.description || tab.text)} />
+                    )}
+                    {(tab.items || tab.features)?.map((item: any) => (
+                      <div class="flex items-start gap-4 mb-4">
+                        <div class="flex-shrink-0 w-6 h-6 mt-1 bg-green-500 rounded-full flex items-center justify-center">
+                          <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                          </svg>
+                        </div>
+                        <div>
+                          {(item.title || item.headline) && <h4 class="font-semibold text-gray-900 dark:text-white">{getText(item.title || item.headline)}</h4>}
+                          {(item.description || item.text) && <p class="text-gray-600 dark:text-gray-300">{getText(item.description || item.text)}</p>}
+                        </div>
+                      </div>
+                    ))}
+                    {(tab.button || tab.cta) && (
+                      <a 
+                        href={(tab.button || tab.cta)?.link?.cached_url || (tab.button || tab.cta)?.link?.url || '#'}
+                        class="inline-flex items-center mt-4 text-gray-900 font-semibold hover:underline"
+                      >
+                        {getText((tab.button || tab.cta)?.label) || getText((tab.button || tab.cta)?.text) || 'Learn more'}
+                        <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                  {tab.image?.filename && (
+                    <div class="relative">
+                      <img 
+                        src={tab.image.filename} 
+                        alt={tab.image.alt || ''} 
+                        class="rounded-xl w-full"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <script>
+          document.querySelectorAll('[data-tab]').forEach(button => {
+            button.addEventListener('click', () => {
+              const index = button.getAttribute('data-tab');
+              // Update buttons - pill style
+              document.querySelectorAll('[data-tab]').forEach(btn => {
+                btn.classList.remove('bg-gray-900', 'text-white', 'shadow-md');
+                btn.classList.add('text-gray-600', 'dark:text-gray-400');
+              });
+              button.classList.remove('text-gray-600', 'dark:text-gray-400');
+              button.classList.add('bg-gray-900', 'text-white', 'shadow-md');
+              // Update panels
+              document.querySelectorAll('[data-panel]').forEach(panel => {
+                panel.classList.add('hidden');
+                panel.classList.remove('block');
+              });
+              document.querySelector(`[data-panel="${index}"]`)?.classList.remove('hidden');
+              document.querySelector(`[data-panel="${index}"]`)?.classList.add('block');
+            });
+          });
+        </script>
+      </section>
+    )}
+
+    {/* Grid Section / Services Section */}
+    {componentName === 'grid-section' && (
+      <section class="py-16 md:py-24 bg-gray-50 dark:bg-slate-800">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6">
+          {/* Header */}
+          <div class="text-center mb-12">
+            {(blok.headline || blok.title) && (
+              <h2 class="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white" set:html={renderHeadline(blok.headline || blok.title)}>
+              </h2>
+            )}
+            {(blok.description || blok.subtitle) && (
+              <p class="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto" set:html={renderRichText(blok.description) || getText(blok.subtitle)} />
+            )}
+          </div>
+          
+          {/* Grid */}
+          <div class:list={[
+            'grid gap-6',
+            blok.columns === '2' ? 'grid-cols-1 md:grid-cols-2' :
+            blok.columns === '4' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' :
+            'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+          ]}>
+            {(blok.items || blok.cards || blok.columns_content || blok.services)?.map((item: any) => {
+              const content = item.content || item;
+              return (
+                <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-sm p-6 text-center hover:shadow-md transition-shadow">
+                  {/* Image/Icon */}
+                  {(content.image?.filename || content.icon?.filename) && (
+                    <div class="mb-4 flex justify-center">
+                      <img 
+                        src={content.image?.filename || content.icon?.filename} 
+                        alt={content.image?.alt || ''} 
+                        class="w-full max-w-[200px] h-32 object-contain rounded-lg"
+                      />
+                    </div>
+                  )}
+                  {/* Title */}
+                  {(content.title || content.headline || content.name) && (
+                    <h3 class="text-lg font-bold mb-2 text-gray-900 dark:text-white">
+                      {getText(content.title || content.headline || content.name)}
+                    </h3>
+                  )}
+                  {/* Description */}
+                  {(content.description || content.text) && (
+                    <p class="text-sm text-gray-600 dark:text-gray-300" set:html={renderRichText(content.description) || getText(content.text)} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* CTA Button */}
+          {(blok.cta || blok.button) && (
+            <div class="text-center mt-10">
+              <a 
+                href={(blok.cta || blok.button)?.link?.cached_url || (blok.cta || blok.button)?.link?.url || '#'}
+                class="inline-flex items-center justify-center px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-full font-semibold transition-colors"
+              >
+                {getText((blok.cta || blok.button)?.label) || getText((blok.cta || blok.button)?.text) || 'Learn More'}
+              </a>
+            </div>
+          )}
+        </div>
+      </section>
+    )}
+
+    {/* Image Text Section */}
+    {componentName === 'image-text-section' && (
+      <section class="py-16 md:py-20 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          <div class:list={[
+            'grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-16 items-center',
+            blok.image_position === 'right' || blok.reverse ? 'lg:flex-row-reverse' : ''
+          ]}>
+            <div class={blok.image_position === 'right' || blok.reverse ? 'order-2 lg:order-1' : ''}>
+              {blok.tagline && (
+                <p class="text-base text-secondary dark:text-blue-200 font-bold tracking-wide uppercase mb-2">{getText(blok.tagline)}</p>
+              )}
+              {(blok.headline || blok.title) && (
+                <h2 class="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">
+                  {getText(blok.headline || blok.title)}
+                </h2>
+              )}
+              {(blok.text || blok.description || blok.content) && (
+                <div class="text-lg text-gray-600 dark:text-gray-300 mb-6 prose dark:prose-invert" set:html={renderRichText(blok.text || blok.description || blok.content)} />
+              )}
+              {blok.features?.map((feature: any) => (
+                <div class="flex items-start gap-4 mb-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    {feature.title && <h4 class="font-semibold text-gray-900 dark:text-white">{feature.title}</h4>}
+                    {feature.description && <p class="text-gray-600 dark:text-gray-300">{feature.description}</p>}
+                  </div>
+                </div>
+              ))}
+              {blok.items?.map((item: any) => (
+                <div class="flex items-start gap-4 mb-4">
+                  <div class="flex-shrink-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    {item.title && <h4 class="font-semibold text-gray-900 dark:text-white">{item.title}</h4>}
+                    {item.description && <p class="text-gray-600 dark:text-gray-300">{item.description}</p>}
+                  </div>
+                </div>
+              ))}
+              {(blok.cta || blok.button) && (
+                <a 
+                  href={(blok.cta || blok.button)?.link?.cached_url || (blok.cta || blok.button)?.link?.url || '#'}
+                  class="inline-flex items-center justify-center px-6 py-3 mt-4 bg-primary hover:bg-primary/90 text-white rounded-lg font-semibold transition-colors"
+                >
+                  {(blok.cta || blok.button)?.label || (blok.cta || blok.button)?.text || 'Learn More'}
+                </a>
+              )}
+            </div>
+            <div class={blok.image_position === 'right' || blok.reverse ? 'order-1 lg:order-2' : ''}>
+              {blok.image?.filename && (
+                <img 
+                  src={blok.image.filename} 
+                  alt={blok.image.alt || ''} 
+                  class="rounded-lg shadow-lg w-full"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Newsletter Form Section */}
+    {componentName === 'newsletter-form-section' && (
+      <section 
+        class="py-16 md:py-20 relative overflow-hidden"
+        style={blok.background_color ? `background-color: ${blok.background_color};` : 'background-color: #1a1a2e;'}
+      >
+        {/* Decorative gradient/image on the right */}
+        <div class="absolute right-0 top-0 bottom-0 w-1/3 opacity-50">
+          <div class="absolute inset-0 bg-gradient-to-l from-purple-500/30 to-transparent"></div>
+          {blok.background_image?.filename && (
+            <img src={blok.background_image.filename} alt="" class="w-full h-full object-cover" />
+          )}
+        </div>
+        
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+          <div class="max-w-2xl">
+            {(blok.headline || blok.title) && (
+              <h2 class="text-2xl md:text-3xl font-bold mb-6 text-white" set:html={renderHeadline(blok.headline || blok.title)}>
+              </h2>
+            )}
+            {(blok.description || blok.subtitle || blok.text) && (
+              <p class="text-gray-300 mb-6" set:html={renderRichText(blok.description || blok.text) || getText(blok.subtitle)} />
+            )}
+            <form 
+              action={blok.form_action || '#'} 
+              method={blok.form_method || 'POST'}
+              class="flex flex-col sm:flex-row gap-3"
+            >
+              <input 
+                type="email" 
+                name="email"
+                placeholder={blok.placeholder || getText(blok.placeholder) || 'Enter your email'}
+                required
+                class="flex-1 px-4 py-3 rounded-full border border-gray-600 bg-gray-800/50 text-white placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+              <button 
+                type="submit"
+                class="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-full font-semibold transition-colors whitespace-nowrap"
+              >
+                {getText(blok.button_text) || getText(blok.submit_text) || 'Stay in the loop!'}
+              </button>
+            </form>
+            {blok.disclaimer && (
+              <p class="text-sm text-gray-400 mt-4">{getText(blok.disclaimer)}</p>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Featured Articles Section */}
+    {componentName === 'featured-articles-section' && (
+      <section class="py-16 md:py-24 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          {/* Header */}
+          <div class="text-center mb-12">
+            {(blok.headline || blok.title) && (
+              <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-gray-900 dark:text-white" set:html={renderHeadline(blok.headline || blok.title)}>
+              </h2>
+            )}
+            {(blok.description || blok.subtitle) && (
+              <p class="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto" set:html={renderRichText(blok.description) || getText(blok.subtitle)} />
+            )}
+          </div>
+          
+          {/* Articles Grid - handles both resolved story references and inline blocks */}
+          <div class:list={[
+            'grid gap-8',
+            (blok.articles || blok.posts || blok.items)?.length === 4 
+              ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' 
+              : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+          ]}>
+            {(blok.articles || blok.posts || blok.items)?.map((item: any) => {
+              // Handle resolved story references (they have content property)
+              const article = item.content || item;
+              const articleSlug = item.full_slug || item.slug || article.link?.cached_url || '#';
+              const articleUrl = articleSlug.startsWith('/') ? articleSlug : `/${articleSlug}`;
+              
+              // Get image - check multiple possible locations
+              const image = article.image || article.featured_image || article.thumbnail || item.image;
+              const imageUrl = image?.filename || image?.url || image;
+              
+              // Get title
+              const title = article.title || article.headline || article.name || item.name || '';
+              
+              // Get category
+              const category = article.category || article.tag || article.type || '';
+              
+              return (
+                <article class="group">
+                  {/* Image */}
+                  {imageUrl && (
+                    <a href={articleUrl} class="block mb-4 overflow-hidden rounded-xl">
+                      <img 
+                        src={typeof imageUrl === 'string' ? imageUrl : imageUrl}
+                        alt={image?.alt || getText(title) || ''} 
+                        class="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </a>
+                  )}
+                  
+                  {/* Category with icon */}
+                  {category && (
+                    <div class="flex items-center gap-2 mb-3">
+                      <svg class="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M7 7h10v10H7z" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M10 3v4M14 3v4M3 10h4M3 14h4M17 10h4M17 14h4M10 17v4M14 17v4" stroke-linecap="round"/>
+                      </svg>
+                      <span class="text-sm font-medium text-gray-600 dark:text-gray-400">{getText(category)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Title */}
+                  {title && (
+                    <h3 class="text-lg font-bold mb-3 text-gray-900 dark:text-white leading-tight">
+                      <a href={articleUrl} class="hover:text-primary transition-colors">
+                        {getText(title)}
+                      </a>
+                    </h3>
+                  )}
+                  
+                  {/* Read more link */}
+                  <a 
+                    href={articleUrl} 
+                    class="inline-flex items-center text-sm font-medium text-gray-900 dark:text-white hover:text-primary transition-colors"
+                  >
+                    Read more
+                    <svg class="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                    </svg>
+                  </a>
+                </article>
+              );
+            })}
+          </div>
+          
+          {/* View all link */}
+          {(blok.link?.cached_url || blok.link?.url || blok.view_all_link) && (
+            <div class="text-center mt-12">
+              <a 
+                href={blok.link?.cached_url || blok.link?.url || blok.view_all_link || '#'} 
+                class="inline-flex items-center text-primary font-semibold hover:underline"
+              >
+                {getText(blok.link_text) || 'View all articles'}
+                <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+                </svg>
+              </a>
+            </div>
+          )}
+        </div>
+      </section>
+    )}
+
+    {/* Banner Reference / CTA Banner */}
+    {componentName === 'banner-reference' && (
+      <section class="py-16 md:py-24 bg-gray-100 dark:bg-slate-800 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            {/* Content Side */}
+            <div class="text-center lg:text-left py-8">
+              {blok.tagline && (
+                <p class="text-base font-bold tracking-wide uppercase mb-2 text-primary">{getText(blok.tagline)}</p>
+              )}
+              {(blok.headline || blok.title) && (
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-4 text-gray-900 dark:text-white" set:html={renderHeadline(blok.headline || blok.title)}>
+                </h2>
+              )}
+              {(blok.description || blok.subtitle || blok.text) && (
+                <p class="text-lg text-gray-600 dark:text-gray-300 mb-8" set:html={renderRichText(blok.description || blok.text) || getText(blok.subtitle)} />
+              )}
+              {(blok.buttons || blok.cta || blok.button) && (
+                <div class="flex flex-wrap justify-center lg:justify-start gap-4">
+                  {(blok.buttons || [blok.cta || blok.button]).filter(Boolean).map((button: any) => (
+                    <a 
+                      href={button.link?.cached_url || button.link?.url || button.url || '#'}
+                      class="inline-flex items-center justify-center px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-full font-semibold transition-colors"
+                    >
+                      {getText(button.label) || getText(button.text) || 'Get in touch'}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Image Side */}
+            {blok.image?.filename && (
+              <div class="relative h-64 lg:h-96">
+                <img 
+                  src={blok.image.filename} 
+                  alt={blok.image.alt || ''} 
+                  class="w-full h-full object-cover rounded-2xl"
+                />
+              </div>
+            )}
+            {/* Background image fallback if no main image */}
+            {!blok.image?.filename && blok.background_image?.filename && (
+              <div class="relative h-64 lg:h-96">
+                <img 
+                  src={blok.background_image.filename} 
+                  alt="" 
+                  class="w-full h-full object-cover rounded-2xl"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Teaser Component */}
+    {componentName === 'Teaser' && (
+      <section class="py-16 md:py-20 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          {blok.headline && (
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-900 dark:text-white">
+              {blok.headline}
+            </h2>
+          )}
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {blok.cards?.map((card: any) => (
+              <div class="p-6 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                {card.image?.filename && (
+                  <img 
+                    src={card.image.filename} 
+                    alt={card.image.alt || ''} 
+                    class="w-full h-48 object-cover rounded-lg mb-4"
+                  />
+                )}
+                {card.headline && (
+                  <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">
+                    {card.headline}
+                  </h3>
+                )}
+                {card.text && (
+                  <p class="text-gray-600 dark:text-gray-300">
+                    {card.text}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Grid Component */}
+    {componentName === 'Grid' && (
+      <section class="py-16 md:py-20 bg-gray-50 dark:bg-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          {blok.headline && (
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white">
+              {blok.headline}
+            </h2>
+          )}
+          {blok.description && (
+            <p class="text-center text-gray-600 dark:text-gray-300 mb-12 max-w-3xl mx-auto">
+              {blok.description}
+            </p>
+          )}
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {blok.columns?.map((column: any) => (
+              <div class="text-center p-6">
+                {column.image?.filename && (
+                  <img 
+                    src={column.image.filename} 
+                    alt={column.image.alt || ''} 
+                    class="w-full h-auto rounded-lg mb-4"
+                  />
+                )}
+                {column.name && (
+                  <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">
+                    {column.name}
+                  </h3>
+                )}
+                {column.role && (
+                  <p class="text-gray-600 dark:text-gray-300">
+                    {column.role}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Button Component */}
+    {componentName === 'button' && (
+      <a
+        href={blok.link?.cached_url || blok.link?.url || '#'}
+        class:list={[
+          'inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold transition-colors',
+          {
+            'bg-blue-600 hover:bg-blue-700 text-white': blok.style === 'default' || !blok.style,
+            'bg-gray-900 hover:bg-gray-800 text-white': blok.style === 'primary-dark',
+            'bg-white hover:bg-gray-100 text-gray-900 border-2 border-gray-900': blok.style === 'outline',
+          }
+        ]}
+        target={blok.link?.target || '_self'}
+      >
+        {blok.label || blok.text_color || 'Button'}
+      </a>
+    )}
+
+    {/* Article Card / Blog Card Component */}
+    {(componentName === 'article-card' || componentName === 'blog-card' || componentName === 'article' || componentName === 'blog-article' || componentName === 'post') && (
+      <article class="group">
+        {/* Image */}
+        {(blok.image?.filename || blok.featured_image?.filename || blok.thumbnail?.filename) && (
+          <a href={blok.link?.cached_url || blok.slug || '#'} class="block mb-4 overflow-hidden rounded-xl">
+            <img 
+              src={blok.image?.filename || blok.featured_image?.filename || blok.thumbnail?.filename}
+              alt={blok.image?.alt || getText(blok.title) || ''} 
+              class="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          </a>
+        )}
+        
+        {/* Category */}
+        {(blok.category || blok.tag) && (
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M7 7h10v10H7z" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 3v4M14 3v4M3 10h4M3 14h4M17 10h4M17 14h4M10 17v4M14 17v4" stroke-linecap="round"/>
+            </svg>
+            <span class="text-sm font-medium text-gray-600 dark:text-gray-400">{getText(blok.category || blok.tag)}</span>
+          </div>
+        )}
+        
+        {/* Title */}
+        {(blok.title || blok.headline || blok.name) && (
+          <h3 class="text-lg font-bold mb-3 text-gray-900 dark:text-white leading-tight">
+            <a href={blok.link?.cached_url || blok.slug || '#'} class="hover:text-primary transition-colors">
+              {getText(blok.title || blok.headline || blok.name)}
+            </a>
+          </h3>
+        )}
+        
+        {/* Read more */}
+        <a 
+          href={blok.link?.cached_url || blok.slug || '#'} 
+          class="inline-flex items-center text-sm font-medium text-gray-900 dark:text-white hover:text-primary transition-colors"
+        >
+          Read more
+          <svg class="w-4 h-4 ml-2 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
+          </svg>
+        </a>
+      </article>
+    )}
+
+    {/* Blog Section / Article Grid */}
+    {(componentName === 'blog-section' || componentName === 'article-grid' || componentName === 'posts-grid') && (
+      <section class="py-16 md:py-24 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          {(blok.headline || blok.title) && (
+            <h2 class="text-3xl md:text-4xl font-bold text-center mb-4 text-gray-900 dark:text-white" set:html={renderHeadline(blok.headline || blok.title)} />
+          )}
+          {(blok.description || blok.subtitle) && (
+            <p class="text-lg text-gray-600 dark:text-gray-300 text-center mb-12 max-w-2xl mx-auto" set:html={renderRichText(blok.description) || getText(blok.subtitle)} />
+          )}
+          <div class="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {(blok.articles || blok.posts || blok.items)?.map((item: any) => (
+              <Astro.self blok={item.content || item} />
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    {/* Footer Section */}
+    {(componentName === 'footer-section' || componentName === 'footer') && (
+      <footer class="bg-gray-900 text-white py-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
+            {/* Brand column */}
+            <div class="lg:col-span-1">
+              {(blok.headline || blok.title || blok.brand_text) && (
+                <h3 class="text-xl font-bold mb-4" set:html={renderHeadline(blok.headline || blok.title || blok.brand_text)} />
+              )}
+              {(blok.description || blok.text) && (
+                <p class="text-gray-400 text-sm" set:html={renderRichText(blok.description || blok.text)} />
+              )}
+            </div>
+            
+            {/* Navigation columns */}
+            {(blok.columns || blok.nav_columns || blok.links)?.map((column: any) => {
+              const col = column.content || column;
+              return (
+                <div>
+                  {(col.title || col.headline) && (
+                    <h4 class="font-semibold mb-4">{getText(col.title || col.headline)}</h4>
+                  )}
+                  {(col.links || col.items)?.map((link: any) => (
+                    <a 
+                      href={link.link?.cached_url || link.link?.url || link.url || '#'}
+                      class="block text-gray-400 hover:text-white text-sm mb-2 transition-colors"
+                    >
+                      {getText(link.label) || getText(link.text) || getText(link.title)}
+                    </a>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Bottom bar */}
+          {(blok.copyright || blok.bottom_text) && (
+            <div class="border-t border-gray-800 mt-12 pt-8 text-center text-sm text-gray-400">
+              <p>{getText(blok.copyright || blok.bottom_text)}</p>
+            </div>
+          )}
+        </div>
+      </footer>
+    )}
+
+    {/* Fallback for unknown components */}
+    {!['Page', 'default-page', 'Hero', 'hero-section', 'Teaser', 'Grid', 'grid-section', 'button', 'tabbed-content-section', 'image-text-section', 'newsletter-form-section', 'featured-articles-section', 'banner-reference', 'article-card', 'blog-card', 'article', 'blog-article', 'post', 'blog-section', 'article-grid', 'posts-grid', 'footer-section', 'footer'].includes(componentName) && (
+      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 my-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-yellow-700">
+              Component <strong>{componentName}</strong> not yet implemented
+            </p>
+            <details class="mt-2">
+              <summary class="text-xs cursor-pointer text-yellow-600 hover:text-yellow-800">Show raw data</summary>
+              <pre class="text-xs mt-2 overflow-auto max-h-64 bg-yellow-100 p-2 rounded">{JSON.stringify(blok, null, 2)}</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}

@@ -1,0 +1,17 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+import { getStory } from '~/utils/storyblok';
+import StoryblokComponent from '~/components/StoryblokComponent.astro';
+
+// Fetch the home story from Storyblok
+const story = await getStory('home');
+
+const metadata = {
+  title: story.name || 'Storyblok Home',
+};
+---
+
+<Layout metadata={metadata}>
+  <StoryblokComponent blok={story.content} />
+</Layout>
+

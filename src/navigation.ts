@@ -6,6 +6,10 @@ export const headerData = {
       text: 'Homes',
       links: [
         {
+          text: 'Storyblok Home',
+          href: getPermalink('/storyblok-home'),
+        },
+        {
           text: 'SaaS',
           href: getPermalink('/homes/saas'),
         },

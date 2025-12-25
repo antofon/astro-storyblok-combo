@@ -1,0 +1,66 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+import { getStory } from '~/utils/storyblok';
+
+// Try to fetch a story called 'home' from Storyblok
+let story;
+let error;
+
+try {
+  story = await getStory('home');
+} catch (e) {
+  error = e instanceof Error ? e.message : String(e);
+}
+
+const metadata = {
+  title: 'Storyblok Connection Test',
+};
+---
+
+<Layout metadata={metadata}>
+  <div class="px-4 py-16 mx-auto max-w-6xl">
+    <h1 class="text-4xl font-bold mb-8">🧪 Storyblok Connection Test</h1>
+    
+    {error ? (
+      <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <strong>❌ Error:</strong> {error}
+        <p class="mt-4 font-semibold">Make sure you have:</p>
+        <ul class="list-disc ml-6 mt-2 space-y-1">
+          <li>Added your <code class="bg-red-200 px-1 rounded">STORYBLOK_TOKEN</code> to the <code class="bg-red-200 px-1 rounded">.env</code> file in your project root</li>
+          <li>Created a story with slug <code class="bg-red-200 px-1 rounded">home</code> in Storyblok</li>
+          <li>Restarted your dev server (<code class="bg-red-200 px-1 rounded">npm run dev</code>)</li>
+        </ul>
+      </div>
+    ) : story ? (
+      <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+        <strong>✅ Success!</strong> Connected to Storyblok
+        <p class="mt-2">Story Name: <strong>{story.name}</strong></p>
+        <p>Story ID: <strong>{story.id}</strong></p>
+        <p>Created: <strong>{new Date(story.created_at).toLocaleDateString()}</strong></p>
+      </div>
+    ) : null}
+
+    {story && (
+      <div class="mt-8">
+        <h2 class="text-2xl font-bold mb-4">📦 Story Data</h2>
+        <p class="mb-4 text-gray-600 dark:text-gray-400">
+          This is the raw JSON data from your Storyblok "home" story:
+        </p>
+        <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded overflow-x-auto">
+          <pre class="text-sm text-gray-800 dark:text-gray-200">{JSON.stringify(story, null, 2)}</pre>
+        </div>
+
+        <div class="mt-8 p-4 bg-blue-50 dark:bg-blue-900 rounded">
+          <h3 class="text-lg font-semibold mb-2">🎉 Next Steps:</h3>
+          <ul class="list-disc ml-6 space-y-1">
+            <li>Your Storyblok integration is working!</li>
+            <li>You can now use <code class="bg-blue-200 dark:bg-blue-700 px-1 rounded">getStory('slug')</code> in any Astro page</li>
+            <li>Create Astro components to render the content blocks from <code class="bg-blue-200 dark:bg-blue-700 px-1 rounded">story.content</code></li>
+            <li>Map Storyblok components to your AstroWind widgets</li>
+          </ul>
+        </div>
+      </div>
+    )}
+  </div>
+</Layout>
+
